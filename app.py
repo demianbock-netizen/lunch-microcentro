@@ -776,6 +776,7 @@ def page_clientes():
 # ============================================================
 def page_config():
     st.title("Configuración")
+    st.success("✅ Versión actualizada · ahora podés agregar y eliminar platos abajo")
     with get_conn() as c:
         rows = c.execute("SELECT * FROM config ORDER BY clave").fetchall()
         platos = c.execute("SELECT * FROM platos ORDER BY dia").fetchall()
