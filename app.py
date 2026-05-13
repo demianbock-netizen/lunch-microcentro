@@ -296,12 +296,17 @@ def page_produccion():
         return
 
     col_name = dia_col[dia]
+    # Calcular semana (lunes a viernes) que contiene fecha_target
+    lunes = fecha_target - dt.timedelta(days=fecha_target.weekday())
+    viernes = lunes + dt.timedelta(days=4)
+    st.caption(f"Mostrando pedidos de la semana del {lunes.strftime('%d/%m')} al {viernes.strftime('%d/%m')}")
+
     with get_conn() as c:
         pedidos = c.execute(
-            f"""SELECT p.{col_name} as plato, cl.nombre as cliente, p.observaciones
+            f"""SELECT p.{col_name} as plato, cl.nombre as cliente, p.observaciones, p.fecha
                 FROM pedidos p JOIN clientes cl ON cl.id = p.cliente_id
-                WHERE p.fecha = ? AND p.{col_name} IS NOT NULL""",
-            (fecha_target,),
+                WHERE p.fecha BETWEEN ? AND ? AND p.{col_name} IS NOT NULL AND p.{col_name} != ''""",
+            (lunes, viernes),
         ).fetchall()
 
         platos = c.execute("SELECT * FROM platos WHERE dia=?", (dia,)).fetchall()
@@ -790,28 +795,63 @@ def page_config():
         st.rerun()
 
     st.divider()
-    st.subheader("Platos y precios")
+    st.subheader("Platos del menú")
+    st.caption("Editá nombre, día o precio. Agregá filas nuevas tipeando en la última fila vacía. "
+               "Para eliminar un plato, desactivá la casilla 'Activo' o usá el botón de eliminar abajo.")
+
     df_p = pd.DataFrame([dict(p) for p in platos])
+    if df_p.empty:
+        df_p = pd.DataFrame(columns=["id", "nombre", "dia", "precio_venta", "activo"])
+
     edited_p = st.data_editor(
         df_p[["id", "nombre", "dia", "precio_venta", "activo"]],
         hide_index=True, use_container_width=True,
+        num_rows="dynamic",
         column_config={
             "id": None,
-            "nombre": "Plato",
-            "dia": st.column_config.SelectboxColumn(options=["LUN", "MAR", "MIE", "JUE", "VIE"]),
-            "precio_venta": st.column_config.NumberColumn("Precio venta", format="$%.0f"),
-            "activo": st.column_config.CheckboxColumn("Activo"),
+            "nombre": st.column_config.TextColumn("Plato", required=True),
+            "dia": st.column_config.SelectboxColumn("Día", options=["LUN", "MAR", "MIE", "JUE", "VIE", "SAB", "DOM"], required=True),
+            "precio_venta": st.column_config.NumberColumn("Precio venta", format="$%.0f", min_value=0, required=True),
+            "activo": st.column_config.CheckboxColumn("Activo", default=True),
         },
+        key="platos_editor",
     )
-    if st.button("💾 Guardar platos", type="primary"):
-        with get_conn() as c:
-            for _, row in edited_p.iterrows():
-                c.execute(
-                    "UPDATE platos SET nombre=?, dia=?, precio_venta=?, activo=? WHERE id=?",
-                    (row["nombre"], row["dia"], float(row["precio_venta"]),
-                     1 if row["activo"] else 0, int(row["id"])),
-                )
-        st.success("Platos guardados.")
+
+    col_a, col_b = st.columns([1, 3])
+    with col_a:
+        if st.button("💾 Guardar cambios en platos", type="primary"):
+            with get_conn() as c:
+                # IDs existentes en la base
+                existing_ids = {p["id"] for p in platos}
+                # IDs que quedaron tras la edición (los nuevos no tienen id)
+                kept_ids = set()
+                for _, row in edited_p.iterrows():
+                    nombre = (row.get("nombre") or "").strip()
+                    if not nombre:
+                        continue
+                    dia = row.get("dia") or "LUN"
+                    precio = float(row.get("precio_venta") or 0)
+                    activo = 1 if row.get("activo", True) else 0
+                    if pd.isna(row.get("id")) or row.get("id") is None:
+                        # Plato nuevo
+                        c.execute(
+                            "INSERT INTO platos(nombre,dia,precio_venta,activo) VALUES(?,?,?,?)",
+                            (nombre, dia, precio, activo),
+                        )
+                    else:
+                        pid = int(row["id"])
+                        kept_ids.add(pid)
+                        c.execute(
+                            "UPDATE platos SET nombre=?, dia=?, precio_venta=?, activo=? WHERE id=?",
+                            (nombre, dia, precio, activo, pid),
+                        )
+                # Eliminar platos que el usuario sacó de la tabla
+                for pid in existing_ids - kept_ids:
+                    c.execute("DELETE FROM receta WHERE plato_id=?", (pid,))
+                    c.execute("DELETE FROM plato_packaging WHERE plato_id=?", (pid,))
+                    c.execute("DELETE FROM platos WHERE id=?", (pid,))
+            st.success("Platos guardados.")
+            st.rerun()
         st.rerun()
 
 
