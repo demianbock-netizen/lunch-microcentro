@@ -16,17 +16,43 @@ DB_PATH = Path(__file__).parent / "data" / "lunch.db"
 TURSO_URL = os.getenv("TURSO_DATABASE_URL", "").strip()
 TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "").strip()
 
-# Permitir cargar desde Streamlit secrets
-try:
-    import streamlit as st  # type: ignore
-    if hasattr(st, "secrets"):
-        try:
-            TURSO_URL = (st.secrets.get("TURSO_DATABASE_URL", "") or TURSO_URL).strip()
-            TURSO_TOKEN = (st.secrets.get("TURSO_AUTH_TOKEN", "") or TURSO_TOKEN).strip()
-        except Exception:
-            pass
-except ImportError:
-    pass
+
+def _read_streamlit_secret(key: str) -> str:
+    """Lee una clave de st.secrets con múltiples fallbacks. Devuelve '' si no existe."""
+    try:
+        import streamlit as st  # type: ignore
+    except ImportError:
+        return ""
+    if not hasattr(st, "secrets"):
+        return ""
+    # 1) Acceso por __getitem__
+    try:
+        v = st.secrets[key]
+        if v:
+            return str(v).strip()
+    except Exception:
+        pass
+    # 2) Acceso por .get
+    try:
+        v = st.secrets.get(key, "")
+        if v:
+            return str(v).strip()
+    except Exception:
+        pass
+    # 3) Atributo
+    try:
+        v = getattr(st.secrets, key, "")
+        if v:
+            return str(v).strip()
+    except Exception:
+        pass
+    return ""
+
+
+if not TURSO_URL:
+    TURSO_URL = _read_streamlit_secret("TURSO_DATABASE_URL")
+if not TURSO_TOKEN:
+    TURSO_TOKEN = _read_streamlit_secret("TURSO_AUTH_TOKEN")
 
 USE_TURSO = bool(TURSO_URL and TURSO_TOKEN)
 

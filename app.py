@@ -101,7 +101,16 @@ page = st.sidebar.radio(
     label_visibility="collapsed",
 )
 st.sidebar.divider()
-st.sidebar.caption(f"DB: `{'Turso cloud' if USE_TURSO else DB_PATH.name}`")
+if USE_TURSO:
+    st.sidebar.success("✓ Conectado a Turso (cloud)")
+else:
+    st.sidebar.error("⚠️ Usando SQLite local — datos NO persisten")
+    st.error(
+        "**Atención:** la app no encuentra las credenciales de Turso. "
+        "Los datos que cargues se van a borrar cuando el servidor reinicie. "
+        "Andá a Streamlit Cloud → tu app → Manage app → Settings → Secrets "
+        "y verificá que `TURSO_DATABASE_URL` y `TURSO_AUTH_TOKEN` estén configurados."
+    )
 
 
 # ============================================================
