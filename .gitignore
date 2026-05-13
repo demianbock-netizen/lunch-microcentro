@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+data/lunch.db
+data/*.db
+.env
+.streamlit/secrets.toml
